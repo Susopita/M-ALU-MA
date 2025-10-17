@@ -1,10 +1,8 @@
 // Code your design here
 // ==============================
 // ALU Punto Flotante IEEE-754 
-// Versión Simplificada
 // Soporte Single (32-bit) y Half (16-bit) precision
 // ==============================
-`timescale 1ns / 1ns
 
 // ==============================
 // Módulo Principal de la ALU
@@ -140,9 +138,9 @@ module mALUma(
         endcase
     end
     
-    // ========================
+    // ====================
     // Lógica de salida 
-  	// ========================
+  	// ====================
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             // Reset: Limpiar todas las salidas
@@ -184,15 +182,15 @@ module fp_add_sub(
     
     // Extraer campos según el modo
     wire sign_a, sign_b_eff;
-    reg [7:0] exp_a, exp_b;
+    wire [7:0] exp_a, exp_b;
     wire [22:0] mant_a, mant_b;
     
     // Para single precision: usar bits completos
     // Para half precision: expandir a formato interno
     assign sign_a = mode_fp ? a[31] : a[15];
     assign sign_b_eff = mode_fp ? (b[31] ^ add_sub) : (b[15] ^ add_sub);  // Invertir signo si es resta
-    // assign exp_a = mode_fp ? a[30:23] : {3'b0, a[14:10]};
-    // assign exp_b = mode_fp ? b[30:23] : {3'b0, b[14:10]};
+    assign exp_a = mode_fp ? a[30:23] : {3'b0, a[14:10]};
+    assign exp_b = mode_fp ? b[30:23] : {3'b0, b[14:10]};
     assign mant_a = mode_fp ? a[22:0] : {a[9:0], 13'b0};  // Expandir mantisa de half
     assign mant_b = mode_fp ? b[22:0] : {b[9:0], 13'b0};
     
@@ -218,22 +216,11 @@ module fp_add_sub(
     reg [7:0] exp_result;
     reg [22:0] mant_result;
     integer leading_zeros, i;
-  
-  	
     
     always @(*) begin
         // Inicializar
         flags = 5'b0;
         result = 32'b0;
-      
-      	// Asignar exponentes según el modo
-        if (mode_fp) begin
-            exp_a = a[30:23];
-            exp_b = b[30:23];
-        end else begin
-            exp_a = {3'b0, a[14:10]};
-            exp_b = {3'b0, b[14:10]};
-        end
         
         // ==========================================
         // Casos especiales
@@ -246,7 +233,7 @@ module fp_add_sub(
         end
         
         // Caso Inf - Inf = NaN
-        else if (a_is_inf && b_is_inf && (sign_a ^ sign_b_eff)) begin
+        else if (a_is_inf && b_is_inf && (sign_a != sign_b_eff)) begin
             result = mode_fp ? 32'h7FC00000 : {16'b0, 16'h7E00};
             flags[3] = 1;
         end
@@ -278,19 +265,10 @@ module fp_add_sub(
         // ==========================================
         else begin
             // Agregar bit implícito (1 para normales, 0 para denormales)
-            
-          	mant_a_norm = a_is_denorm ? {2'b00, mant_a} : {2'b01, mant_a};
-if (a_is_denorm && exp_a == 0) exp_a = 1;
-
+            mant_a_norm = a_is_denorm ? {2'b00, mant_a} : {2'b01, mant_a};
             mant_b_norm = b_is_denorm ? {2'b00, mant_b} : {2'b01, mant_b};
-          	if (b_is_denorm && exp_b == 0) exp_b = 1;
-
             
-          // Asegurar que los exponentes sean al menos de 1 para evitar shift excesivo (esto evita que los subnormales se desplacen demasiado)
-            if (exp_a == 0) exp_a = 1;
-            if (exp_b == 0) exp_b = 1;
-  
-          // Alinear exponentes (poner el mismo exponente)
+            // Alinear exponentes (poner el mismo exponente)
             if (exp_a > exp_b) begin
                 exp_diff = exp_a - exp_b;
                 exp_result = exp_a;
@@ -334,13 +312,8 @@ if (a_is_denorm && exp_a == 0) exp_a = 1;
                 // Verificar overflow de exponente
                 if (exp_result >= EXP_MAX) begin
                     flags[1] = 1;  // Overflow
-                  	flags[4] = 1; // inexact
                     result = mode_fp ? {sign_result, 8'hFF, 23'b0} : {16'b0, sign_result, 5'h1F, 10'b0};
                 end else begin
-                  
-                  	if (!mode_fp) begin
-    if (exp_result > 5'h1F) exp_result = 5'h1F;
-end
                     result = mode_fp ? {sign_result, exp_result, mant_result} : {16'b0, sign_result, exp_result[4:0], mant_result[22:13]};
                 end
             end
@@ -352,9 +325,6 @@ end
                 else
                     mant_result = {mant_sum[25:16], 13'b0};
                 
-              	if (!mode_fp) begin
-    if (exp_result > 5'h1F) exp_result = 5'h1F;
-end
                 result = mode_fp ? {sign_result, exp_result, mant_result} : {16'b0, sign_result, exp_result[4:0], mant_result[22:13]};
             end
             
@@ -371,13 +341,10 @@ end
                     if (mant_sum[i] == 1 && leading_zeros == 0)
                         leading_zeros = 25 - i;
                 end
-
-
                 
                 // Verificar underflow
                 if (leading_zeros > exp_result) begin
                     flags[0] = 1;  // Underflow
-                  	flags[4] = 1;  // inexact
                     result = mode_fp ? {sign_result, 8'h00, 23'b0} : {16'b0, sign_result, 5'h00, 10'b0};
                 end else begin
                     exp_result = exp_result - leading_zeros;
@@ -388,9 +355,6 @@ end
                     else
                         mant_result = {mant_sum[25:16], 13'b0};
                     
-                  	if (!mode_fp) begin
-    if (exp_result > 5'h1F) exp_result = 5'h1F;
-end
                     result = mode_fp ? {sign_result, exp_result, mant_result} : {16'b0, sign_result, exp_result[4:0], mant_result[22:13]};
                 end
             end
@@ -415,6 +379,8 @@ module fp_mul(
     // Extraer campos
     wire sign_a = mode_fp ? a[31] : a[15];
     wire sign_b = mode_fp ? b[31] : b[15];
+    wire [7:0] exp_a = mode_fp ? a[30:23] : {3'b0, a[14:10]};
+    wire [7:0] exp_b = mode_fp ? b[30:23] : {3'b0, b[14:10]};
     wire [22:0] mant_a = mode_fp ? a[22:0] : {a[9:0], 13'b0};
     wire [22:0] mant_b = mode_fp ? b[22:0] : {b[9:0], 13'b0};
     
@@ -437,23 +403,11 @@ module fp_mul(
     reg [7:0] exp_result;
     reg [22:0] mant_result;
     reg [23:0] mant_a_norm, mant_b_norm;
-  	reg [7:0] exp_a = mode_fp ? a[30:23] : {3'b0, a[14:10]};
-    reg [7:0] exp_b = mode_fp ? b[30:23] : {3'b0, b[14:10]};
     
     always @(*) begin
         flags = 5'b0;
         result = 32'b0;
-        sign_result = sign_a ^ sign_b;
-      
-      	// Asignar exponentes según el modo
-        if (mode_fp) begin
-            exp_a = a[30:23];
-            exp_b = b[30:23];
-        end else begin
-            exp_a = {3'b0, a[14:10]};
-            exp_b = {3'b0, b[14:10]};
-        end
-      
+        sign_result = sign_a ^ sign_b;  // XOR de signos
         
         // Caso NaN
         if (a_is_nan || b_is_nan) begin
@@ -479,13 +433,9 @@ module fp_mul(
         
         // Operación normal
         else begin
-            // Agregar bit implícito (1 para normales, 0 para denormales)
-            
-          	mant_a_norm = a_is_denorm ? {2'b00, mant_a} : {2'b01, mant_a};
-if (a_is_denorm && exp_a == 0) exp_a = 1;
-
-            mant_b_norm = b_is_denorm ? {2'b00, mant_b} : {2'b01, mant_b};
-          	if (b_is_denorm && exp_b == 0) exp_b = 1;
+            // Agregar bit implícito
+            mant_a_norm = a_is_denorm ? {1'b0, mant_a} : {1'b1, mant_a};
+            mant_b_norm = b_is_denorm ? {1'b0, mant_b} : {1'b1, mant_b};
             
             // Multiplicar mantisas
             mant_product = mant_a_norm * mant_b_norm;
@@ -512,9 +462,6 @@ if (a_is_denorm && exp_a == 0) exp_a = 1;
                 flags[0] = 1;
                 result = mode_fp ? {sign_result, 8'h00, 23'b0} : {16'b0, sign_result, 5'h00, 10'b0};
             end else begin
-              	if (!mode_fp) begin
-    if (exp_result > 5'h1F) exp_result = 5'h1F;
-end
                 result = mode_fp ? {sign_result, exp_result, mant_result} : {16'b0, sign_result, exp_result[4:0], mant_result[22:13]};
             end
         end
@@ -538,8 +485,11 @@ module fp_div(
     // Extraer campos
     wire sign_a = mode_fp ? a[31] : a[15];
     wire sign_b = mode_fp ? b[31] : b[15];
+    wire [7:0] exp_a = mode_fp ? a[30:23] : {3'b0, a[14:10]};
+    wire [7:0] exp_b = mode_fp ? b[30:23] : {3'b0, b[14:10]};
     wire [22:0] mant_a = mode_fp ? a[22:0] : {a[9:0], 13'b0};
     wire [22:0] mant_b = mode_fp ? b[22:0] : {b[9:0], 13'b0};
+    
     wire [7:0] EXP_MAX = mode_fp ? 8'd255 : 8'd31;
     wire [7:0] EXP_BIAS = mode_fp ? 8'd127 : 8'd15;
     
@@ -559,22 +509,11 @@ module fp_div(
     reg [7:0] exp_result;
     reg [22:0] mant_result;
     reg [23:0] mant_a_norm, mant_b_norm;
-  	reg [7:0] exp_a = mode_fp ? a[30:23] : {3'b0, a[14:10]};
-    reg [7:0] exp_b = mode_fp ? b[30:23] : {3'b0, b[14:10]};
     
     always @(*) begin
         flags = 5'b0;
         result = 32'b0;
         sign_result = sign_a ^ sign_b;
-      
-      	// Asignar exponentes según el modo
-        if (mode_fp) begin
-            exp_a = a[30:23];
-            exp_b = b[30:23];
-        end else begin
-            exp_a = {3'b0, a[14:10]};
-            exp_b = {3'b0, b[14:10]};
-        end
         
         // Caso NaN
         if (a_is_nan || b_is_nan) begin
@@ -611,18 +550,12 @@ module fp_div(
         
         // Operación normal
         else begin
-            // Agregar bit implícito (1 para normales, 0 para denormales)
-            
-          	mant_a_norm = a_is_denorm ? {2'b00, mant_a} : {2'b01, mant_a};
-if (a_is_denorm && exp_a == 0) exp_a = 1;
-
-            mant_b_norm = b_is_denorm ? {2'b00, mant_b} : {2'b01, mant_b};
-          	if (b_is_denorm && exp_b == 0) exp_b = 1;
+            // Agregar bit implícito
+            mant_a_norm = a_is_denorm ? {1'b0, mant_a} : {1'b1, mant_a};
+            mant_b_norm = b_is_denorm ? {1'b0, mant_b} : {1'b1, mant_b};
             
             // División de mantisas
-            mant_quotient = ({mant_a_norm, 24'b0}) / mant_b_norm; 
-			if (mant_quotient[47] == 0) mant_quotient = mant_quotient << 1; // Normaliza si falta el 1 implícito
-
+            mant_quotient = ({mant_a_norm, 24'b0}) / mant_b_norm;
             
             // Calcular exponente
             exp_diff = exp_a - exp_b + EXP_BIAS;
@@ -639,9 +572,6 @@ if (a_is_denorm && exp_a == 0) exp_a = 1;
             end else begin
                 exp_result = exp_diff - 1;
                 mant_result = mode_fp ? mant_quotient[44:22] : {mant_quotient[44:35], 13'b0};
-              	if (mant_result == 0) begin
-    flags[0] = 1; // underflow
-end
             end
             
             // Verificar overflow/underflow
@@ -652,9 +582,6 @@ end
                 flags[0] = 1;
                 result = mode_fp ? {sign_result, 8'h00, 23'b0} : {16'b0, sign_result, 5'h00, 10'b0};
             end else begin
-              	if (!mode_fp) begin
-    if (exp_result > 5'h1F) exp_result = 5'h1F;
-end
                 result = mode_fp ? {sign_result, exp_result, mant_result} : {16'b0, sign_result, exp_result[4:0], mant_result[22:13]};
             end
         end
