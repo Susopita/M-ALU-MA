@@ -174,7 +174,7 @@ module fp_add_sub(
     reg sign_result;
     reg [7:0] exp_result;
     reg [22:0] mant_result;
-    integer i, shift_cnt;
+    integer j, shift_cnt;
     
     always @(*) begin
         flags = 5'b0;
@@ -251,12 +251,14 @@ module fp_add_sub(
                 result = mode_fp ? {sign_result, 31'b0} : {16'b0, sign_result, 15'b0};
             end
             else begin
-                shift_cnt = 0;
-                for (i = 47; i >= 1; i = i - 1) begin
-                    if (mant_sum[i] == 0)
-                        shift_cnt = shift_cnt + 1;
-                    else
-                        i = 0;
+                begin : NORMALIZE_BLOCK
+                    shift_cnt = 47; // Valor por defecto si no se encuentra ningún '1'
+                    for (j = 46; j >= 0; j = j - 1) begin
+                        if (mant_sum[j]) begin
+                            // La cantidad de shift es la distancia desde la posición objetivo (46)
+                            shift_cnt = 46 - j; 
+                        end
+                    end
                 end
                 
                 if (shift_cnt >= exp_result) begin
@@ -397,6 +399,8 @@ module fp_div(
     reg [22:0] mant_result;
     reg [23:0] mant_a_norm, mant_b_norm;
     
+    integer shift_amount;
+    
     always @(*) begin
         flags = 5'b0;
         result = 32'b0;
@@ -455,7 +459,6 @@ module fp_div(
                 mant_result = mode_fp ? mant_quotient[22:0] : {mant_quotient[22:13], 13'b0};
             end else begin
                 // Caso especial: resultado muy pequeño, normalizar buscando el primer 1
-                integer shift_amount;
                 shift_amount = 0;
                 
                 // Buscar el primer bit 1 desde bit 21 hacia abajo
