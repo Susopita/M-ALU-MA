@@ -1,0 +1,83 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company:
+// Engineer:
+//
+// Create Date: 10/03/2025 04:53:50 PM
+// Design Name:
+// Module Name: alu
+// Project Name:
+// Target Devices:
+// Tool Versions:
+// Description:
+//
+// Dependencies:
+//
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+//
+//////////////////////////////////////////////////////////////////////////////////
+
+
+module Maluma(
+    input  [31:0] A, B,           // a y b de 32 bits IEEE
+    input  [2:0] ALUControl,      //
+    input mode_fp,                // 1 bit: 1 = half (16bits), 0 = single (32bits)
+    output reg [31:0] Result,     // resultado de 32 bits
+    output wire [4:0] ALUFlags    // overflow, underflow, divide-by-zero, invalid operation,  inexact
+);
+
+    // wire neg, zero, carry, overflow;
+    wire [31:0] sum_sub_32; wire [15:0] sum_sub_16;  // 6 bits porque puede haber acarreo
+    wire [4:0] flags_32; wire [4:0] flags_16;
+    wire op = ALUControl[0];
+
+    // operaciones
+    localparam ADD = 3'b000,
+               SUB = 3'b001,
+               MUL = 3'b010,
+               DIV = 3'b011;
+
+    SumSub #(
+        .E_BITS(8),
+        .M_BITS(23)
+    ) suma_o_resta_32 (
+        A, B,
+        op,
+        sum_sub_32,
+        flags_32
+    );
+
+    SumSub #(
+        .E_BITS(5),
+        .M_BITS(10)
+    ) suma_o_resta_16 (
+        A, B,
+        op,
+        sum_sub_16,
+        flags_16
+    );
+
+    always @(*) begin
+        if (~mode_fp) begin
+            casex (ALUControl)
+                3'b0??: Result = sum_sub_32;  
+                3'b100: Result = A & B;
+                3'b101: Result = A | B;
+                3'b111: Result = A ^ B;
+                default: Result = 32'b0;
+            endcase
+        end else begin
+             casex (ALUControl)
+                3'b0??: Result = sum_sub_16;  
+                3'b100: Result = A & B;
+                3'b101: Result = A | B;
+                3'b111: Result = A ^ B;
+                default: Result = 16'b0;
+            endcase
+        end
+    end
+    
+    assign ALUFlags = (mode_fp) ? flags_32 : flags_16;
+endmodule

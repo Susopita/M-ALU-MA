@@ -1,0 +1,152 @@
+`timescale 1ps / 1ps
+//////////////////////////////////////////////////////////////////////////////////  TESTBENCH
+// Company:
+// Engineer:
+//
+// Create Date: 10/03/2025 04:54:02 PM
+// Design Name:
+// Module Name: alu_tb
+// Project Name:
+// Target Devices:
+// Tool Versions:
+// Description:
+//
+// Dependencies:
+//
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+//
+//////////////////////////////////////////////////////////////////////////////////
+
+module alu_tb;
+  reg  [31:0] a, b;
+  reg  [2:0]  ALUControl;
+  reg is_half;
+  wire [31:0] Result;
+  wire [4:0]  ALUFlags; // {N,Z,C,V}
+
+  Maluma dut(
+    .A(a), .B(b),
+    .ALUControl(ALUControl),
+    .mode_fp(is_half),
+    .Result(Result),
+    .ALUFlags(ALUFlags)
+  );
+
+  task show(input [408:0] name);  
+    begin
+      $display("--------------------------------------------------");
+      $display("Prueba: %0s", name);
+      if (is_half) begin
+          $display("  A         : %b | %05b | %010b (%0s)", a[15], a[14:10], a[9:0], fp_classify(a, is_half));
+          $display("  B         : %b | %05b | %010b (%0s)", b[15], b[14:10], b[9:0], fp_classify(b, is_half));
+      end else begin
+          $display("  A         : %b | %08b | %023b (%0s)", a[31], a[30:23], a[22:0], fp_classify(a, is_half));
+          $display("  B         : %b | %08b | %023b (%0s)", b[31], b[30:23], b[22:0], fp_classify(b, is_half));
+      end      
+      $display("  ALUControl: %03b", ALUControl);
+      
+      if (is_half) begin
+          $display("  Result    : %b | %05b | %010b  (Hex: 0x%04h) -> %0s", Result[15], Result[14:10], Result[9:0], Result, fp_classify(Result, is_half));        
+      end else begin
+          $display("  Result    : %b | %08b | %023b  (Hex: 0x%08h) -> %0s", Result[31], Result[30:23], Result[22:0], Result, fp_classify(Result, is_half));      
+      end      
+      $display("  ALUFlags  : %05b", ALUFlags);
+      $display("--------------------------------------------------");
+    end  
+  endtask
+
+  initial begin
+      $dumpfile("waves.vcd");
+      $dumpvars(0, dut);
+  end
+
+  initial begin
+    // 0) 3.0 + 5.0
+    a = 32'h40400000; b = 32'h40A00000; is_half = 0; ALUControl = 3'b000; #5; show("3.0 + 5.0 (Esperado: 0x41000000)");
+
+    // 1) 5.0 - 5.0
+    a = 32'h40A00000; b = 32'h40A00000; is_half = 0;  ALUControl = 3'b001; #5; show("5.0 - 5.0 (Esperado: 0x00000000)");
+
+    // 2) 3.5 + 5.2
+    a = 32'h40600000; b = 32'h40A66666; is_half = 0;  ALUControl = 3'b000; #5; show("3.5 + 5.2 (Esperado: 0x410b3333)");
+
+    // --- Prueba 3: Cancelación Masiva ---
+    a = 32'h3F800001; b = 32'h3F800000; is_half = 0;  ALUControl = 3'b001; #5; show("Prueba 'Cancelación Masiva' (Esperado: 0x34000000)");
+
+    // --- Prueba 4: Overflow de Mantisa ---
+    a = 32'h3FC00000; b = 32'h3FC00000; is_half = 0;  ALUControl = 3'b000; #5; show("Prueba 'Overflow Mantisa' (Esperado: 0x40400000)");
+
+    // --- Prueba 5: Redondeo Arriba ---
+    a = 32'h3F800000; b = 32'h34000001; is_half = 0;  ALUControl = 3'b000; #5; show("Prueba 'Redondeo Arriba' (Esperado: 0x3F800001)");
+
+    // --- Prueba 6: Redondeo al Par ---
+    a = 32'h3F800000; b = 32'h33800000; is_half = 0;  ALUControl = 3'b000; #5; show("Prueba 'Redondeo al Par' (Esperado: 0x3F800000)");
+        
+    // --- Prueba 7: Infinito + Número Finito ---
+    a = 32'h7F800000; b = 32'h40A00000; is_half = 0;  ALUControl = 3'b000; #5; show("Inf + 5.0 (Esperado: +Inf)");
+
+    // --- Prueba 8: Número Finito - Infinito ---
+    a = 32'h40400000; b = 32'h7F800000; is_half = 0;  ALUControl = 3'b001; #5; show("3.0 - Inf (Esperado: -Inf)");
+
+    // --- Prueba 9: Infinito + Infinito (Mismo Signo) ---
+    a = 32'h7F800000; b = 32'h7F800000; is_half = 0;  ALUControl = 3'b000; #5; show("Inf + Inf (Esperado: +Inf)");
+
+    // --- Prueba 10: Infinito - Infinito (Indeterminación -> NaN) ---
+    a = 32'h7F800000; b = 32'h7F800000; is_half = 0;  ALUControl = 3'b001; #5; show("Inf - Inf (Esperado: NaN)");
+
+    // --- Prueba 11: NaN + Número Finito (Propagación de NaN) ---
+    a = 32'h7FC00001; b = 32'h40A00000; is_half = 0;  ALUControl = 3'b000; #5; show("NaN + 5.0 (Esperado: NaN)");
+
+    // --- Prueba 12: Infinito + NaN ---
+    a = 32'hFF800000; b = 32'h7FC00000; is_half = 0;  ALUControl = 3'b000; #5; show("-Inf + NaN (Esperado: NaN)");
+
+    // --- Prueba 13: Cero Negativo + Cero Negativo ---
+    a = 32'h80000000; b = 32'h80000000; is_half = 0;  ALUControl = 3'b000; #5; show("-0 + -0 (Esperado: -0)");
+
+    $finish;
+  end
+  
+  function [127:0] fp_classify (input [31:0] val, input is_half);
+      begin: function_body
+          // Variables locales
+          reg s;
+          reg [7:0] e; // Ancho suficiente para el exponente más grande (8 bits)
+          reg [22:0] m; // Ancho suficiente para la mantisa más grande (23 bits)
+          reg [7:0] EXP_MAX;
+          reg is_mantissa_zero;
+
+          if (is_half) begin
+              // Lógica para Half Precision (16 bits)
+              s = val[15];
+              e = val[14:10];
+              m = val[9:0];
+              EXP_MAX = 5'b11111;
+              is_mantissa_zero = (m[9:0] == 0);
+          end else begin
+              // Lógica para Single Precision (32 bits)
+              s = val[31];
+              e = val[30:23];
+              m = val[22:0];
+              EXP_MAX = 8'b11111111;
+              is_mantissa_zero = (m[22:0] == 0);
+          end
+
+          // Lógica de clasificación (común a ambos)
+          if (e == EXP_MAX) begin
+              if (is_mantissa_zero)
+                  fp_classify = s ? "-Infinity" : "+Infinity";
+              else
+                  fp_classify = "NaN";
+          end else if (e == 0) begin
+              if (is_mantissa_zero)
+                  fp_classify = s ? "-Zero" : "+Zero";
+              else
+                  fp_classify = "Denormalizado";
+          end else begin
+              fp_classify = "Normal";
+          end
+      end
+  endfunction
+endmodule
