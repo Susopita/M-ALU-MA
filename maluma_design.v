@@ -1,25 +1,21 @@
 // ==============================
 // ALU Punto Flotante IEEE-754 
-// VERSIÓN FINAL COMPLETA
-// Soporte Single (32-bit) y Half (16-bit) precision
 // ==============================
 
 `timescale 1ns / 1ns
 
-// ==============================
 // Módulo Principal de la ALU
-// ==============================
 module mALUma(
     input clk,
     input rst,
     input start,
-    input [31:0] op_a,          // Operando A (32-bit)
-    input [31:0] op_b,          // Operando B (32-bit)
+    input [31:0] op_a,          
+    input [31:0] op_b,          
     input [2:0] op_code,        // Código operación: 000=ADD, 001=SUB, 010=MUL, 011=DIV
     input mode_fp,              // 0=half(16-bit), 1=single(32-bit)
     input round_mode,           // Modo redondeo: 0=nearest even
-    output reg [31:0] result,   // Resultado IEEE-754 (bits[15:0] para half)
-    output reg valid_out,       // Resultado válido y estable
+    output reg [31:0] result,   
+    output reg valid_out,       
     output reg [4:0] flags      // [4:inexact, 3:invalid, 2:div_by_zero, 1:overflow, 0:underflow]
 );
 
@@ -137,9 +133,7 @@ module mALUma(
 
 endmodule
 
-// ==========================================
 // Módulo de Suma/Resta
-// ==========================================
 module fp_add_sub(
     input [31:0] a,
     input [31:0] b,
@@ -280,9 +274,7 @@ module fp_add_sub(
     
 endmodule
 
-// ==========================================
 // Módulo de Multiplicación
-// ==========================================
 module fp_mul(
     input [31:0] a,
     input [31:0] b,
@@ -369,9 +361,7 @@ module fp_mul(
     
 endmodule
 
-// ==========================================
-// Módulo de División
-// ==========================================
+// Módulo de División 
 module fp_div(
     input [31:0] a,
     input [31:0] b,
@@ -401,7 +391,7 @@ module fp_div(
     wire b_is_denorm = (exp_b == 0) && (mant_b != 0);
     
     reg [47:0] mant_quotient;
-    reg [9:0] exp_diff;
+    reg signed [9:0] exp_result_temp;
     reg sign_result;
     reg [8:0] exp_result;
     reg [22:0] mant_result;
@@ -434,27 +424,60 @@ module fp_div(
             result = mode_fp ? {sign_result, 31'b0} : {16'b0, sign_result, 15'b0};
         end
         else begin
+            // Normalizar mantisas (24 bits con bit implícito)
             mant_a_norm = a_is_denorm ? {1'b0, mant_a} : {1'b1, mant_a};
             mant_b_norm = b_is_denorm ? {1'b0, mant_b} : {1'b1, mant_b};
             
-            mant_quotient = ({mant_a_norm, 24'b0}) / mant_b_norm;
+            // División con shift de 23 bits para precisión correcta. Coloca el cociente con el bit implícito en posición 23
+            mant_quotient = ({mant_a_norm, 23'b0}) / mant_b_norm;
             
-            exp_diff = {2'b0, exp_a} + {2'b0, EXP_BIAS};
-            exp_diff = exp_diff - {2'b0, exp_b};
-            
-            if (mant_quotient[46]) begin
-                exp_result = exp_diff[8:0];
-                mant_result = mode_fp ? mant_quotient[45:23] : {mant_quotient[45:36], 13'b0};
+            // Calcular exponente base: exp_a - exp_b + BIAS
+            if (!a_is_denorm && !b_is_denorm) begin
+                exp_result_temp = $signed({2'b0, exp_a}) - $signed({2'b0, exp_b}) + $signed({2'b0, EXP_BIAS});
+            end else if (a_is_denorm && !b_is_denorm) begin
+                exp_result_temp = $signed(10'd1) - $signed({2'b0, exp_b}) + $signed({2'b0, EXP_BIAS});
+            end else if (!a_is_denorm && b_is_denorm) begin
+                exp_result_temp = $signed({2'b0, exp_a}) - $signed(10'd1) + $signed({2'b0, EXP_BIAS});
             end else begin
-                mant_quotient = mant_quotient << 1;
-                exp_result = exp_diff[8:0] - 1;
-                mant_result = mode_fp ? mant_quotient[45:23] : {mant_quotient[45:36], 13'b0};
+                exp_result_temp = $signed({2'b0, EXP_BIAS});
             end
             
-            if (exp_result >= EXP_MAX) begin
+          // Normalizar el cociente
+          // Con shift de 23, el bit implícito debería estar en posición 23 (si mant_a >= mant_b) o en posición 22 (si mant_a < mant_b)
+            if (mant_quotient[23]) begin
+                // Resultado normalizado: bit implícito en posición 23
+                exp_result = exp_result_temp[8:0];
+                mant_result = mode_fp ? mant_quotient[22:0] : {mant_quotient[22:13], 13'b0};
+            end else if (mant_quotient[22]) begin
+                // Necesita shift left 1: bit implícito en posición 22
+                mant_quotient = mant_quotient << 1;
+                exp_result = exp_result_temp[8:0] - 1;
+                mant_result = mode_fp ? mant_quotient[22:0] : {mant_quotient[22:13], 13'b0};
+            end else begin
+                // Caso especial: resultado muy pequeño, normalizar buscando el primer 1
+                integer shift_amount;
+                shift_amount = 0;
+                
+                // Buscar el primer bit 1 desde bit 21 hacia abajo
+                if (mant_quotient[21]) shift_amount = 2;
+                else if (mant_quotient[20]) shift_amount = 3;
+                else if (mant_quotient[19]) shift_amount = 4;
+                else if (mant_quotient[18]) shift_amount = 5;
+                else if (mant_quotient[17]) shift_amount = 6;
+                else if (mant_quotient[16]) shift_amount = 7;
+                else if (mant_quotient[15]) shift_amount = 8;
+                else shift_amount = 9; // O resultado es cero (underflow)
+                
+                mant_quotient = mant_quotient << shift_amount;
+                exp_result = exp_result_temp[8:0] - shift_amount;
+                mant_result = mode_fp ? mant_quotient[22:0] : {mant_quotient[22:13], 13'b0};
+            end
+            
+            // Verificar overflow/underflow
+            if (exp_result >= EXP_MAX || exp_result_temp >= EXP_MAX) begin
                 flags[1] = 1;
                 result = mode_fp ? {sign_result, 8'hFF, 23'b0} : {16'b0, sign_result, 5'h1F, 10'b0};
-            end else if (exp_result == 0 || exp_result[8]) begin
+            end else if (exp_result_temp <= 0) begin
                 flags[0] = 1;
                 result = mode_fp ? {sign_result, 8'h00, 23'b0} : {16'b0, sign_result, 5'h00, 10'b0};
             end else begin
