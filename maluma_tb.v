@@ -137,29 +137,29 @@ module mALUma_tb;
             
             if (mode) begin
                 if (res_val == expected_val) begin
-                    $display("  ✓ PASS");
+                    $display("  PASS");
                     pass_count = pass_count + 1;
                 end else begin
                     if ((expected_val[30:23] == 8'hFF && expected_val[22:0] != 0) &&
                         (res_val[30:23] == 8'hFF && res_val[22:0] != 0)) begin
-                        $display("  ✓ PASS (NaN)");
+                        $display("  PASS (NaN)");
                         pass_count = pass_count + 1;
                     end else begin
-                        $display("  ✗ FAIL");
+                        $display("  FAIL");
                         fail_count = fail_count + 1;
                     end
                 end
             end else begin
                 if (res_val[15:0] == expected_val[15:0]) begin
-                    $display("  ✓ PASS");
+                    $display("  PASS");
                     pass_count = pass_count + 1;
                 end else begin
                     if ((expected_val[14:10] == 5'h1F && expected_val[9:0] != 0) &&
                         (res_val[14:10] == 5'h1F && res_val[9:0] != 0)) begin
-                        $display("  ✓ PASS (NaN)");
+                        $display("  PASS (NaN)");
                         pass_count = pass_count + 1;
                     end else begin
-                        $display("  ✗ FAIL");
+                        $display("  FAIL");
                         fail_count = fail_count + 1;
                     end
                 end
@@ -170,7 +170,6 @@ module mALUma_tb;
     initial begin
         $display("\n================================================================");
         $display("        TESTBENCH - mALUma IEEE-754 ALU");
-        $display("        Versión Final Completa");
         $display("================================================================\n");
         
         rst = 1;
@@ -277,11 +276,11 @@ module mALUma_tb;
         $display("                    RESUMEN FINAL");
         $display("================================================================");
         $display("Total de pruebas:     %0d", test_count);
-        $display("Pruebas PASS:         %0d ✓", pass_count);
-        $display("Pruebas FAIL:         %0d ✗", fail_count);
+        $display("Pruebas PASS:         %0d", pass_count);
+        $display("Pruebas FAIL:         %0d", fail_count);
         
         if (fail_count == 0) begin
-            $display("\n¡ÉXITO! Todas las pruebas pasaron (100%%)");
+            $display("\nTodas las pruebas pasaron (100%%)");
         end else begin
             $display("\nPorcentaje de éxito: %.2f%%", (pass_count * 100.0) / test_count);
         end
