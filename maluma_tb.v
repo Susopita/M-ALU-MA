@@ -1,8 +1,5 @@
-// Code your testbench here
-// or browse Examples
 `timescale 1ns / 1ns
 
-// =========================================
 // TESTBENCH - mALUma IEEE-754 ALU
 module mALUma_tb;
 
@@ -187,80 +184,68 @@ module mALUma_tb;
         rst = 0;
         @(posedge clk);
         
-        // ========== SINGLE PRECISION: BÁSICO ==========
         $display("\n--- SINGLE PRECISION: OPERACIONES BÁSICAS ---");
         run_test("SP: 2.0 + 3.0 = 5.0", SP_TWO, SP_THREE, 3'b000, 1, SP_FIVE);
         run_test("SP: 5.0 - 3.0 = 2.0", SP_FIVE, SP_THREE, 3'b001, 1, SP_TWO);
         run_test("SP: 2.0 * 3.0 = 6.0", SP_TWO, SP_THREE, 3'b010, 1, SP_SIX);
         run_test("SP: 6.0 / 2.0 = 3.0", SP_SIX, SP_TWO, 3'b011, 1, SP_THREE);
         
-        // ========== SINGLE PRECISION: NaN ==========
         $display("\n--- SINGLE PRECISION: CASOS CON NaN ---");
         run_test("SP: NaN + 5.0 = NaN", SP_NAN, SP_FIVE, 3'b000, 1, SP_NAN);
         run_test("SP: 3.0 - NaN = NaN", SP_THREE, SP_NAN, 3'b001, 1, SP_NAN);
         run_test("SP: NaN * 2.0 = NaN", SP_NAN, SP_TWO, 3'b010, 1, SP_NAN);
         run_test("SP: 1.0 / NaN = NaN", SP_ONE, SP_NAN, 3'b011, 1, SP_NAN);
         
-        // ========== SINGLE PRECISION: Infinito ==========
         $display("\n--- SINGLE PRECISION: CASOS CON INFINITO ---");
         run_test("SP: Inf + 5.0 = Inf", SP_INF_POS, SP_FIVE, 3'b000, 1, SP_INF_POS);
         run_test("SP: 3.0 - Inf = -Inf", SP_THREE, SP_INF_POS, 3'b001, 1, SP_INF_NEG);
         run_test("SP: Inf * 2.0 = Inf", SP_INF_POS, SP_TWO, 3'b010, 1, SP_INF_POS);
         run_test("SP: 5.0 / Inf = 0", SP_FIVE, SP_INF_POS, 3'b011, 1, SP_ZERO_POS);
         
-        // ========== SINGLE PRECISION: División por cero ==========
         $display("\n--- SINGLE PRECISION: DIVISIÓN POR CERO ---");
         run_test("SP: 5.0 / 0 = Inf", SP_FIVE, SP_ZERO_POS, 3'b011, 1, SP_INF_POS);
         run_test("SP: -3.0 / 0 = -Inf", 32'hC0400000, SP_ZERO_POS, 3'b011, 1, SP_INF_NEG);
         run_test("SP: 0 / 0 = NaN", SP_ZERO_POS, SP_ZERO_POS, 3'b011, 1, SP_NAN);
         
-        // ========== SINGLE PRECISION: Ceros con signo ==========
         $display("\n--- SINGLE PRECISION: CEROS CON SIGNO ---");
         run_test("SP: +0 + +0 = +0", SP_ZERO_POS, SP_ZERO_POS, 3'b000, 1, SP_ZERO_POS);
         run_test("SP: +0 + -0 = +0", SP_ZERO_POS, SP_ZERO_NEG, 3'b000, 1, SP_ZERO_POS);
         run_test("SP: -0 + -0 = -0", SP_ZERO_NEG, SP_ZERO_NEG, 3'b000, 1, SP_ZERO_NEG);
         
-        // ========== HALF PRECISION: BÁSICO ==========
         $display("\n--- HALF PRECISION: OPERACIONES BÁSICAS ---");
         run_test("HP: 3.0 + 5.0 = 8.0", {16'b0, HP_THREE}, {16'b0, HP_FIVE}, 3'b000, 0, {16'b0, HP_EIGHT});
         run_test("HP: 5.0 - 3.0 = 2.0", {16'b0, HP_FIVE}, {16'b0, HP_THREE}, 3'b001, 0, {16'b0, HP_TWO});
         run_test("HP: 2.0 * 3.0 = 6.0", {16'b0, HP_TWO}, {16'b0, HP_THREE}, 3'b010, 0, {16'b0, HP_SIX});
         run_test("HP: 6.0 / 2.0 = 3.0", {16'b0, HP_SIX}, {16'b0, HP_TWO}, 3'b011, 0, {16'b0, HP_THREE});
         
-        // ========== HALF PRECISION: NaN ==========
         $display("\n--- HALF PRECISION: CASOS CON NaN ---");
         run_test("HP: NaN + 5.0 = NaN", {16'b0, HP_NAN}, {16'b0, HP_FIVE}, 3'b000, 0, {16'b0, HP_NAN});
         run_test("HP: 3.0 - NaN = NaN", {16'b0, HP_THREE}, {16'b0, HP_NAN}, 3'b001, 0, {16'b0, HP_NAN});
         run_test("HP: NaN * 2.0 = NaN", {16'b0, HP_NAN}, {16'b0, HP_TWO}, 3'b010, 0, {16'b0, HP_NAN});
         run_test("HP: 1.0 / NaN = NaN", {16'b0, HP_ONE}, {16'b0, HP_NAN}, 3'b011, 0, {16'b0, HP_NAN});
         
-        // ========== HALF PRECISION: Infinito ==========
         $display("\n--- HALF PRECISION: CASOS CON INFINITO ---");
         run_test("HP: Inf + 5.0 = Inf", {16'b0, HP_INF_POS}, {16'b0, HP_FIVE}, 3'b000, 0, {16'b0, HP_INF_POS});
         run_test("HP: 3.0 - Inf = -Inf", {16'b0, HP_THREE}, {16'b0, HP_INF_POS}, 3'b001, 0, {16'b0, HP_INF_NEG});
         run_test("HP: Inf * 2.0 = Inf", {16'b0, HP_INF_POS}, {16'b0, HP_TWO}, 3'b010, 0, {16'b0, HP_INF_POS});
         run_test("HP: 5.0 / Inf = 0", {16'b0, HP_FIVE}, {16'b0, HP_INF_POS}, 3'b011, 0, {16'b0, HP_ZERO_POS});
         
-        // ========== HALF PRECISION: División por cero ==========
         $display("\n--- HALF PRECISION: DIVISIÓN POR CERO ---");
         run_test("HP: 5.0 / 0 = Inf", {16'b0, HP_FIVE}, {16'b0, HP_ZERO_POS}, 3'b011, 0, {16'b0, HP_INF_POS});
         run_test("HP: -3.0 / 0 = -Inf", {16'b0, 16'hC200}, {16'b0, HP_ZERO_POS}, 3'b011, 0, {16'b0, HP_INF_NEG});
         run_test("HP: 0 / 0 = NaN", {16'b0, HP_ZERO_POS}, {16'b0, HP_ZERO_POS}, 3'b011, 0, {16'b0, HP_NAN});
         
-        // ========== HALF PRECISION: Ceros con signo ==========
         $display("\n--- HALF PRECISION: CEROS CON SIGNO ---");
         run_test("HP: +0 + +0 = +0", {16'b0, HP_ZERO_POS}, {16'b0, HP_ZERO_POS}, 3'b000, 0, {16'b0, HP_ZERO_POS});
         run_test("HP: +0 + -0 = +0", {16'b0, HP_ZERO_POS}, {16'b0, HP_ZERO_NEG}, 3'b000, 0, {16'b0, HP_ZERO_POS});
         run_test("HP: -0 + -0 = -0", {16'b0, HP_ZERO_NEG}, {16'b0, HP_ZERO_NEG}, 3'b000, 0, {16'b0, HP_ZERO_NEG});
         
-        // ========== SINGLE PRECISION: Inf / Inf ==========
         $display("\n--- SINGLE PRECISION: Inf / Inf = NaN ---");
         run_test("SP: Inf / Inf = NaN", SP_INF_POS, SP_INF_POS, 3'b011, 1, SP_NAN);
         run_test("SP: Inf / -Inf = NaN", SP_INF_POS, SP_INF_NEG, 3'b011, 1, SP_NAN);
         run_test("SP: -Inf / Inf = NaN", SP_INF_NEG, SP_INF_POS, 3'b011, 1, SP_NAN);
         run_test("SP: -Inf / -Inf = NaN", SP_INF_NEG, SP_INF_NEG, 3'b011, 1, SP_NAN);
         
-        // ========== SINGLE PRECISION: Inf +/- Inf ==========
         $display("\n--- SINGLE PRECISION: Inf +/- Inf ---");
         run_test("SP: Inf + Inf = Inf", SP_INF_POS, SP_INF_POS, 3'b000, 1, SP_INF_POS);
         run_test("SP: -Inf + -Inf = -Inf", SP_INF_NEG, SP_INF_NEG, 3'b000, 1, SP_INF_NEG);
@@ -269,14 +254,12 @@ module mALUma_tb;
         run_test("SP: Inf + -Inf = NaN", SP_INF_POS, SP_INF_NEG, 3'b000, 1, SP_NAN);
         run_test("SP: -Inf + Inf = NaN", SP_INF_NEG, SP_INF_POS, 3'b000, 1, SP_NAN);
         
-        // ========== HALF PRECISION: Inf / Inf ==========
         $display("\n--- HALF PRECISION: Inf / Inf = NaN ---");
         run_test("HP: Inf / Inf = NaN", {16'b0, HP_INF_POS}, {16'b0, HP_INF_POS}, 3'b011, 0, {16'b0, HP_NAN});
         run_test("HP: Inf / -Inf = NaN", {16'b0, HP_INF_POS}, {16'b0, HP_INF_NEG}, 3'b011, 0, {16'b0, HP_NAN});
         run_test("HP: -Inf / Inf = NaN", {16'b0, HP_INF_NEG}, {16'b0, HP_INF_POS}, 3'b011, 0, {16'b0, HP_NAN});
         run_test("HP: -Inf / -Inf = NaN", {16'b0, HP_INF_NEG}, {16'b0, HP_INF_NEG}, 3'b011, 0, {16'b0, HP_NAN});
         
-        // ========== HALF PRECISION: Inf +/- Inf ==========
         $display("\n--- HALF PRECISION: Inf +/- Inf ---");
         run_test("HP: Inf + Inf = Inf", {16'b0, HP_INF_POS}, {16'b0, HP_INF_POS}, 3'b000, 0, {16'b0, HP_INF_POS});
         run_test("HP: -Inf + -Inf = -Inf", {16'b0, HP_INF_NEG}, {16'b0, HP_INF_NEG}, 3'b000, 0, {16'b0, HP_INF_NEG});
@@ -285,14 +268,12 @@ module mALUma_tb;
         run_test("HP: Inf + -Inf = NaN", {16'b0, HP_INF_POS}, {16'b0, HP_INF_NEG}, 3'b000, 0, {16'b0, HP_NAN});
         run_test("HP: -Inf + Inf = NaN", {16'b0, HP_INF_NEG}, {16'b0, HP_INF_POS}, 3'b000, 0, {16'b0, HP_NAN});
         
-        // ========== SINGLE PRECISION: Números negativos ==========
         $display("\n--- SINGLE PRECISION: NÚMEROS NEGATIVOS ---");
         run_test("SP: -5.0 * -3.0 = 15.0", 32'hC0A00000, 32'hC0400000, 3'b010, 1, 32'h41700000);
         run_test("SP: -6.0 / -2.0 = 3.0", 32'hC0C00000, 32'hC0000000, 3'b011, 1, SP_THREE);
         run_test("SP: 5.0 * -2.0 = -10.0", SP_FIVE, 32'hC0000000, 3'b010, 1, 32'hC1200000);
         
-        // ========== RESUMEN FINAL ==========
-        $display("\n================================================================");
+        $display("\n==============================================================");
         $display("                    RESUMEN FINAL");
         $display("================================================================");
         $display("Total de pruebas:     %0d", test_count);
@@ -304,16 +285,13 @@ module mALUma_tb;
         end else begin
             $display("\nPorcentaje de éxito: %.2f%%", (pass_count * 100.0) / test_count);
         end
-        
-        $display("================================================================\n");
-        
-        #100;
+        #10;
         $finish;
     end
-    
-    initial begin
-        $dumpfile("maluma_test.vcd");
-        $dumpvars();
-    end
+    // Sólo si se compila en EDA Playground
+    // initial begin
+       // $dumpfile("maluma_test.vcd");
+       // $dumpvars();
+    // end
 
 endmodule
