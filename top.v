@@ -73,6 +73,8 @@ module top_basys3 (
     localparam BLANK  = 5'h14;
     localparam CHAR_I = 5'h15;
     localparam CHAR_D = 5'h0D;
+    localparam CHAR_0 = 5'h00;
+    localparam CHAR_F = 5'h0F;
 
     // ==================================
     // Conexiones a la ALU
@@ -204,7 +206,7 @@ module top_basys3 (
         end else begin
             // Si no, muestra los mensajes de la FSM
             case(state)
-                // He corregido tus mensajes para que sean más claros: "In A H"
+                S_IDLE:     {display_d3, display_d2, display_d1, display_d0} = {CHAR_0, CHAR_F, CHAR_F, BLANK};
                 S_LOAD_A_H: {display_d3, display_d2, display_d1, display_d0} = {CHAR_L, CHAR_D, 5'hA, CHAR_H}; // "Ld A H"
                 S_LOAD_A_L: {display_d3, display_d2, display_d1, display_d0} = {CHAR_L, CHAR_D, 5'hA, CHAR_L}; // "Ld A L"
                 S_LOAD_B_H: {display_d3, display_d2, display_d1, display_d0} = {CHAR_L, CHAR_D, 5'hB, CHAR_H}; // "Ld b H"
