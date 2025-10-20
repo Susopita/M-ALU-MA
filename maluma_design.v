@@ -24,30 +24,50 @@ module mALUma(
     
     reg state, next_state;
     
-    wire [31:0] result_add, result_sub, result_mul, result_div;
-    wire [4:0] flags_add, flags_sub, flags_mul, flags_div;
-    
+    wire [31:0] result_add_32, result_sub_32, result_mul, result_div;
+    wire [15:0] result_add_16, result_sub_16;
+    wire [4:0] flags_add_32, flags_sub_32, flags_add_16, flags_sub_16, flags_mul, flags_div;
     reg [31:0] result_selected;
     reg [4:0] flags_selected;
     
-    fp_add_sub add_module(
-        .a(op_a),
-        .b(op_b),
-        .add_sub(1'b0),
-        .mode_fp(mode_fp),
-        .round_mode(round_mode),
-        .result(result_add),
-        .flags(flags_add)
+    SumSub #(
+        .E_BITS(8),
+        .M_BITS(23)
+    ) suma_32 (
+        .A(op_a), .B(op_b),
+        .op(1'b0),
+        .Result(result_add_32),
+        .ALUFlags(flags_add_32)
+    );
+
+    SumSub #(
+        .E_BITS(5),
+        .M_BITS(10)
+    ) suma_16 (
+        .A(op_a), .B(op_b),
+        .op(1'b0),
+        .Result(result_add_16),
+        .ALUFlags(flags_add_16)
     );
     
-    fp_add_sub sub_module(
-        .a(op_a),
-        .b(op_b),
-        .add_sub(1'b1),
-        .mode_fp(mode_fp),
-        .round_mode(round_mode),
-        .result(result_sub),
-        .flags(flags_sub)
+    SumSub #(
+        .E_BITS(8),
+        .M_BITS(23)
+    ) resta_32 (
+        .A(op_a), .B(op_b),
+        .op(1'b1),
+        .Result(result_sub_32),
+        .ALUFlags(flags_sub_32)
+    );
+
+    SumSub #(
+        .E_BITS(5),
+        .M_BITS(10)
+    ) resta_16 (
+        .A(op_a), .B(op_b),
+        .op(1'b1),
+        .Result(result_sub_16),
+        .ALUFlags(flags_sub_16)
     );
     
     fp_mul mul_module(
@@ -71,12 +91,22 @@ module mALUma(
     always @(*) begin
         case (op_code[1:0])
             2'b00: begin
-                result_selected = result_add;
-                flags_selected = flags_add;
+                if (mode_fp) begin
+                    result_selected = result_add_32;
+                    flags_selected = flags_add_32;
+                end else begin
+                    result_selected = result_add_16;
+                    flags_selected = flags_add_16;
+                end
             end
             2'b01: begin
-                result_selected = result_sub;
-                flags_selected = flags_sub;
+                if (mode_fp) begin
+                    result_selected = result_sub_32;
+                    flags_selected = flags_sub_32;
+                end else begin
+                    result_selected = result_sub_16;
+                    flags_selected = flags_sub_16;
+                end
             end
             2'b10: begin
                 result_selected = result_mul;
@@ -133,147 +163,201 @@ module mALUma(
 
 endmodule
 
-// Módulo de Suma/Resta
-module fp_add_sub(
-    input [31:0] a,
-    input [31:0] b,
-    input add_sub,
-    input mode_fp,
-    input round_mode,
-    output reg [31:0] result,
-    output reg [4:0] flags
+module SumSub #(
+    // ✅ PARÁMETROS PRINCIPALES: Ancho de Exponente y Mantisa
+    parameter E_BITS = 8,
+    parameter M_BITS = 23
+) (
+    // ✅ PUERTOS GENÉRICOS: El ancho total se calcula automáticamente
+    input [1+E_BITS+M_BITS-1:0] A, B,
+    input                       op,
+    output reg [1+E_BITS+M_BITS-1:0] Result,
+    output reg [4:0]                 ALUFlags
 );
+    // =================================================================
+    // ✅ PARÁMETROS LOCALES (calculados a partir de los principales)
+    // =================================================================
+    localparam BITS = 1 + E_BITS + M_BITS;
+    localparam EXP_MAX = {E_BITS{1'b1}};
+    // Ancho para la mantisa extendida: {Overflow, Implícito, Mantisa, G, R, S}
+    localparam MANT_EXT_WIDTH = M_BITS + 5;
+
+    // =================================================================
+    // ✅ DECONSTRUCCIÓN PARAMETRIZADA
+    // =================================================================
+    wire s_A = A[BITS-1];
+    wire [E_BITS-1:0] e_A = A[BITS-2 : M_BITS];
+    wire [M_BITS-1:0] m_A = A[M_BITS-1 : 0];
+
+    wire s_B = B[BITS-1];
+    wire [E_BITS-1:0] e_B = B[BITS-2 : M_BITS];
+    wire [M_BITS-1:0] m_B = B[M_BITS-1 : 0];
+
+    wire effective_s_B = op ? ~s_B : s_B;
     
-    wire sign_a, sign_b_eff;
-    wire [7:0] exp_a, exp_b;
-    wire [22:0] mant_a, mant_b;
-    
-    assign sign_a = mode_fp ? a[31] : a[15];
-    assign sign_b_eff = mode_fp ? (b[31] ^ add_sub) : (b[15] ^ add_sub);
-    assign exp_a = mode_fp ? a[30:23] : {3'b0, a[14:10]};
-    assign exp_b = mode_fp ? b[30:23] : {3'b0, b[14:10]};
-    assign mant_a = mode_fp ? a[22:0] : {a[9:0], 13'b0};
-    assign mant_b = mode_fp ? b[22:0] : {b[9:0], 13'b0};
-    
-    wire [7:0] EXP_MAX = mode_fp ? 8'd255 : 8'd31;
-    
-    wire a_is_nan = (exp_a == EXP_MAX) && (mant_a != 0);
-    wire b_is_nan = (exp_b == EXP_MAX) && (mant_b != 0);
-    wire a_is_inf = (exp_a == EXP_MAX) && (mant_a == 0);
-    wire b_is_inf = (exp_b == EXP_MAX) && (mant_b == 0);
-    wire a_is_zero = (exp_a == 0) && (mant_a == 0);
-    wire b_is_zero = (exp_b == 0) && (mant_b == 0);
-    wire a_is_denorm = (exp_a == 0) && (mant_a != 0);
-    wire b_is_denorm = (exp_b == 0) && (mant_b != 0);
-    
-    reg [23:0] mant_a_norm, mant_b_norm;
-    reg [7:0] exp_larger;
-    reg [7:0] exp_diff;
-    reg [47:0] mant_a_aligned, mant_b_aligned;
-    reg [48:0] mant_sum;
-    reg sign_result;
-    reg [7:0] exp_result;
-    reg [22:0] mant_result;
-    integer j, shift_cnt;
-    
+    // =================================================================
+    // ✅ REGISTROS INTERNOS PARAMETRIZADOS
+    // =================================================================
+    reg s_C;
+    reg [E_BITS-1:0] e_C;
+    reg [MANT_EXT_WIDTH-1:0] m_C; // Usa el ancho extendido calculado
+
+    reg [MANT_EXT_WIDTH-1:0] m_A_full, m_B_full;
+
+    integer i;
+    reg [$clog2(M_BITS+1)-1:0] zeros = 0; // Ancho calculado para 'zeros'
+
+    reg [E_BITS-1:0] shift_amount; // Ancho calculado para 'shift_amount'
+    reg R_bit, S_bit;
+    reg round_up;
+    reg [MANT_EXT_WIDTH-1:0] sticky_mask;
+
+    // ✅ Registros para cada flag
+    reg flag_invalid, flag_div_zero, flag_overflow, flag_underflow, flag_inexact;
+
+    // =================================================================
+    // ✅ DETECCIÓN DE CASOS ESPECIALES PARAMETRIZADA
+    // =================================================================
+    wire is_zero_A = (e_A == 0 && m_A == 0);
+    wire is_inf_A  = (e_A == EXP_MAX && m_A == 0);
+    wire is_nan_A  = (e_A == EXP_MAX && m_A != 0);
+
+    wire is_zero_B = (e_B == 0 && m_B == 0);
+    wire is_inf_B  = (e_B == EXP_MAX && m_B == 0);
+    wire is_nan_B  = (e_B == EXP_MAX && m_B != 0);
+    // Sumar
     always @(*) begin
-        flags = 5'b0;
-        result = 32'b0;
-        
-        if (a_is_nan || b_is_nan) begin
-            result = mode_fp ? 32'h7FC00000 : {16'b0, 16'h7E00};
-            flags[3] = 1;
-        end
-        else if (a_is_inf && b_is_inf && (sign_a != sign_b_eff)) begin
-            result = mode_fp ? 32'h7FC00000 : {16'b0, 16'h7E00};
-            flags[3] = 1;
-        end
-        else if (a_is_inf || b_is_inf) begin
-            sign_result = a_is_inf ? sign_a : sign_b_eff;
-            result = mode_fp ? {sign_result, 8'hFF, 23'b0} : {16'b0, sign_result, 5'h1F, 10'b0};
-        end
-        else if (a_is_zero && b_is_zero) begin
-            sign_result = sign_a & sign_b_eff;
-            result = mode_fp ? {sign_result, 31'b0} : {16'b0, sign_result, 15'b0};
-        end
-        else if (a_is_zero) begin
-            result = mode_fp ? {sign_b_eff, b[30:0]} : {16'b0, sign_b_eff, b[14:0]};
-        end
-        else if (b_is_zero) begin
-            result = a;
-        end
-        else begin
-            mant_a_norm = a_is_denorm ? 24'b0 : {1'b1, mant_a};
-            mant_b_norm = b_is_denorm ? 24'b0 : {1'b1, mant_b};
-            
-            if (exp_a > exp_b) begin
-                exp_larger = exp_a;
-                exp_diff = exp_a - exp_b;
-                mant_a_aligned = {mant_a_norm, 24'b0};
-                mant_b_aligned = ({mant_b_norm, 24'b0} >> exp_diff);
-            end else begin
-                exp_larger = exp_b;
-                exp_diff = exp_b - exp_a;
-                mant_a_aligned = ({mant_a_norm, 24'b0} >> exp_diff);
-                mant_b_aligned = {mant_b_norm, 24'b0};
-            end
-            
-            if (sign_a == sign_b_eff) begin
-                mant_sum = {1'b0, mant_a_aligned} + {1'b0, mant_b_aligned};
-                sign_result = sign_a;
-            end else begin
-                if (mant_a_aligned >= mant_b_aligned) begin
-                    mant_sum = {1'b0, (mant_a_aligned - mant_b_aligned)};
-                    sign_result = sign_a;
-                end else begin
-                    mant_sum = {1'b0, (mant_b_aligned - mant_a_aligned)};
-                    sign_result = sign_b_eff;
+
+        // ✅ Inicializar flags a 0 en cada ciclo
+        flag_invalid = 1'b0;
+        flag_div_zero = 1'b0; // Siempre 0 para suma/resta
+        flag_overflow = 1'b0;
+        flag_underflow = 1'b0;
+        flag_inexact = 1'b0;
+ 
+        // =================================================================
+        // ✅ APLICAR LAS REGLAS DE LA ARITMÉTICA ESPECIAL
+        // =================================================================
+        // La lógica de prioridad es: NaN > Infinito > Cero > Normal
+
+        // --- MANEJO DE CASOS ESPECIALES ---
+        if (is_nan_A || is_nan_B) begin
+            Result = {1'b0, EXP_MAX, {1'b1, {M_BITS-1{1'b0}}}}; // NaN genérico
+            flag_invalid = 1'b1;
+        end else if (is_inf_A) begin
+            if (is_inf_B && (s_A != effective_s_B)) begin
+                Result = {1'b0, EXP_MAX, {1'b1, {M_BITS-1{1'b0}}}}; // NaN
+                flag_invalid = 1'b1;
+            end else Result = A;
+        end else if (is_inf_B) begin
+            Result = {effective_s_B, EXP_MAX, {M_BITS{1'b0}}};
+        end else if (is_zero_A) begin
+            Result = {effective_s_B, e_B, m_B};
+        end else if (is_zero_B) begin
+            Result = A;
+        end else begin
+
+            // ==============================
+            // Inicializacion
+            // ==============================
+
+            m_A_full = {2'b01, m_A, 3'b000};
+            m_B_full = {2'b01, m_B, 3'b000};
+
+            // Nivelar exponentes
+            if (e_A > e_B) begin
+                shift_amount = e_A - e_B;
+                e_C = e_A;
+                // Para calcular R y S, creamos un 'sticky_mask'
+                // El 'OR' de los bits que se caerán (excepto el primero) será el Sticky Bit.
+                if (shift_amount > 0) begin
+                    R_bit = m_B_full[shift_amount - 1 + 3];
+                    sticky_mask = (1 << shift_amount) - 1;
+                    S_bit = |(m_B_full & sticky_mask);
                 end
-            end
-            
-            exp_result = exp_larger;
-            
-            if (mant_sum[48]) begin
-                mant_result = mode_fp ? mant_sum[47:25] : {mant_sum[47:38], 13'b0};
-                exp_result = exp_result + 1;
-                if (exp_result >= EXP_MAX) begin
-                    flags[1] = 1;
-                    result = mode_fp ? {sign_result, 8'hFF, 23'b0} : {16'b0, sign_result, 5'h1F, 10'b0};
-                end else begin
-                    result = mode_fp ? {sign_result, exp_result, mant_result} : {16'b0, sign_result, exp_result[4:0], mant_result[22:13]};
+                m_B_full = m_B_full >> shift_amount;
+            end 
+            else if (e_B > e_A) begin
+                shift_amount = e_B - e_A;
+                e_C = e_B;
+                if (shift_amount > 0) begin
+                    R_bit = m_A_full[shift_amount - 1 + 3];
+                    sticky_mask = (1 << shift_amount) - 1;
+                    S_bit = |(m_A_full & sticky_mask);
                 end
+                m_A_full = m_A_full >> shift_amount;
+            end else begin
+                e_C = e_A; // Exponentes ya son iguales
             end
-            else if (mant_sum[47]) begin
-                mant_result = mode_fp ? mant_sum[46:24] : {mant_sum[46:37], 13'b0};
-                result = mode_fp ? {sign_result, exp_result, mant_result} : {16'b0, sign_result, exp_result[4:0], mant_result[22:13]};
+
+            // Sumar mantisas
+            if (s_A == effective_s_B) begin
+                m_C = m_A_full + m_B_full;
+                s_C = s_A;
             end
-            else if (mant_sum == 0) begin
-                result = mode_fp ? {sign_result, 31'b0} : {16'b0, sign_result, 15'b0};
+            else if (m_A_full >= m_B_full) begin
+                m_C = m_A_full - m_B_full;
+                s_C = s_A;
+            end else begin
+                m_C = m_B_full - m_A_full;
+                s_C = s_B;
             end
-            else begin
-                begin : NORMALIZE_BLOCK
-                    shift_cnt = 47; // Valor por defecto si no se encuentra ningún '1'
-                    for (j = 46; j >= 0; j = j - 1) begin
-                        if (mant_sum[j]) begin
-                            // La cantidad de shift es la distancia desde la posición objetivo (46)
-                            shift_cnt = 46 - j; 
-                        end
+
+
+            // ✅ FLAG: Si se perdieron bits en la alineación, el resultado será inexacto
+            if (R_bit || S_bit) begin
+                flag_inexact = 1'b1;
+            end
+            
+
+            // --- NORMALIZACIÓN, REDONDEO Y ENSAMBLADO FINAL ---
+            if (m_C == 0) begin
+                s_C = 1'b0; // x-x siempre es +0
+                e_C = 0;
+                Result = {s_C, {E_BITS{1'b0}}, {M_BITS{1'b0}}};
+            end else begin
+                // NORMALIZACIÓN
+                if (m_C[M_BITS+4]) begin // Overflow de mantisa
+                    R_bit = m_C[0]; S_bit = R_bit | S_bit;
+                    m_C = m_C >> 1;
+                    e_C = e_C + 1;
+                end else if (~m_C[M_BITS+3]) begin // Leading zeros
+                    zeros = 0;
+                    for (i = M_BITS+2; i >= 3; i = i - 1) begin
+                        if (m_C[i]) zeros = (M_BITS+3) - i;
+                    end
+                    if (e_C > zeros) begin
+                        m_C = m_C << zeros;
+                        e_C = e_C - zeros;
+                    end else begin
+                        flag_underflow = 1'b1; flag_inexact = 1'b1;
+                        m_C = 0; e_C = 0;
                     end
                 end
-                
-                if (shift_cnt >= exp_result) begin
-                    flags[0] = 1;
-                    result = mode_fp ? {sign_result, 8'h00, 23'b0} : {16'b0, sign_result, 5'h00, 10'b0};
-                end else begin
-                    exp_result = exp_result - shift_cnt;
-                    mant_sum = mant_sum << shift_cnt;
-                    mant_result = mode_fp ? mant_sum[46:24] : {mant_sum[46:37], 13'b0};
-                    result = mode_fp ? {sign_result, exp_result, mant_result} : {16'b0, sign_result, exp_result[4:0], mant_result[22:13]};
+
+                // REDONDEO
+                round_up = R_bit && (S_bit || m_C[3]);
+                if (round_up) begin
+                    flag_inexact = 1'b1;
+                    m_C = m_C + (1 << 3);
+                    if (m_C[M_BITS+4]) begin
+                        m_C = m_C >> 1;
+                        e_C = e_C + 1;
+                    end
                 end
+
+                // CHEQUEO FINAL y ENSAMBLADO
+                if (e_C >= EXP_MAX) begin
+                    flag_overflow = 1'b1; flag_inexact = 1'b1;
+                    Result = {s_C, EXP_MAX, {M_BITS{1'b0}}};
+                end else begin
+                    Result = {s_C, e_C, m_C[M_BITS+2 : 3]};
+                end            
             end
         end
+        // ✅ Ensamblado final de las flags
+        ALUFlags = {flag_inexact, flag_invalid, flag_div_zero, flag_overflow, flag_underflow};
     end
-    
 endmodule
 
 // Módulo de Multiplicación

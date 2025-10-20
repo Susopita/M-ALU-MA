@@ -152,6 +152,8 @@ module top_basys3 (
             // Lógica de la ALU
             alu_start <= 1'b0;
             if (state == S_COMPUTE && next_state == S_COMPUTE) begin
+                reg_op_code <= sw[2:0];
+                reg_mode_fp <= sw[3];
                 alu_start <= 1'b1;
             end
     
@@ -214,7 +216,7 @@ module top_basys3 (
     always @(*) begin
         if (state == S_SHOW_FLAGS) begin
             led = 16'b0; // Apaga todos los LEDs por defecto
-            led[4:0] = reg_flags; // Muestra las 5 flags en los primeros 5 LEDs
+            led[14:10] = reg_flags; // Muestra las 5 flags en los primeros 5 LEDs
         end else if (show_result) begin
             led = result_display_bus;
         end else begin
