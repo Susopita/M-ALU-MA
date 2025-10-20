@@ -30,7 +30,7 @@ module top_basys3 (
     input           btnD,
     // Interruptores y LEDs
     input  [15:0]   sw,
-    output [15:0]   led,
+    output reg [15:0]   led,
     // Display 7-Segmentos
     output [6:0]    seg,
     output [3:0]    an
@@ -47,6 +47,7 @@ module top_basys3 (
     localparam S_CONFIG     = 4'd5;
     localparam S_COMPUTE    = 4'd6;
     localparam S_DISPLAY    = 4'd7;
+    localparam S_SHOW_FLAGS = 4'd8;
 
     reg [3:0] state, next_state;
 
@@ -72,9 +73,11 @@ module top_basys3 (
     localparam CHAR_H = 5'h13;
     localparam BLANK  = 5'h14;
     localparam CHAR_I = 5'h15;
+    localparam CHAR_G = 5'h06;
     localparam CHAR_D = 5'h0D;
     localparam CHAR_0 = 5'h00;
     localparam CHAR_F = 5'h0F;
+    localparam CHAR_A = 5'h0A;
 
     // ==================================
     // Conexiones a la ALU
@@ -107,11 +110,18 @@ module top_basys3 (
         .btn_pulse(btnC_pulse)
     );
     
-    wire btnU_pulse; // <-- Pulso limpio para el botón de reset
+    //wire btnU_pulse; // <-- Pulso limpio para el botón de reset
     debounce u_debounce_btnU (
         .clk(clk),
         .btn_in(btnU),
         .btn_pulse(btnU_pulse)
+    );
+    
+    wire btnD_pulse;
+    debounce u_debounce_btnD (
+        .clk(clk),
+        .btn_in(btnD),
+        .btn_pulse(btnD_pulse)
     );
 
     // =========================================================
@@ -141,7 +151,7 @@ module top_basys3 (
     
             // Lógica de la ALU
             alu_start <= 1'b0;
-            if (state == S_CONFIG && next_state == S_COMPUTE) begin
+            if (state == S_COMPUTE && next_state == S_COMPUTE) begin
                 alu_start <= 1'b1;
             end
     
@@ -184,6 +194,12 @@ module top_basys3 (
         end else if (state == S_COMPUTE && alu_valid_out) begin
              // Transición automática cuando la ALU termina
              next_state = S_DISPLAY;
+        // <-- NUEVO: Lógica para alternar con btnD
+        end else if (btnD_pulse) begin 
+            if (state == S_DISPLAY)
+                next_state = S_SHOW_FLAGS;
+            else if (state == S_SHOW_FLAGS)
+                next_state = S_DISPLAY;
         end
     end
     
@@ -194,13 +210,23 @@ module top_basys3 (
     assign result_display_bus = sw[15] ? reg_result[31:16] : reg_result[15:0];
 
     // Salida BINARIA a los LEDs
-    assign led[15:0] = show_result ? result_display_bus : 16'b0;
+    // <-- MODIFICADO: Lógica de LEDs ahora en un bloque always
+    always @(*) begin
+        if (state == S_SHOW_FLAGS) begin
+            led = 16'b0; // Apaga todos los LEDs por defecto
+            led[4:0] = reg_flags; // Muestra las 5 flags en los primeros 5 LEDs
+        end else if (show_result) begin
+            led = result_display_bus;
+        end else begin
+            led = 16'b0;
+        end
+    end
 
     // Señales de 5 bits para el display
     reg [4:0] display_d3, display_d2, display_d1, display_d0;
     
     always @(*) begin
-        if (show_result) begin
+        if (show_result && state != S_SHOW_FLAGS) begin
             // Si la bandera está activa, SIEMPRE muestra el resultado en hexadecimal
             {display_d3, display_d2, display_d1, display_d0} = {{1'b0, result_display_bus[15:12]}, {1'b0, result_display_bus[11:8]}, {1'b0, result_display_bus[7:4]}, {1'b0, result_display_bus[3:0]}};
         end else begin
@@ -212,6 +238,7 @@ module top_basys3 (
                 S_LOAD_B_H: {display_d3, display_d2, display_d1, display_d0} = {CHAR_L, CHAR_D, 5'hB, CHAR_H}; // "Ld b H"
                 S_LOAD_B_L: {display_d3, display_d2, display_d1, display_d0} = {CHAR_L, CHAR_D, 5'hB, CHAR_L}; // "Ld b L"
                 S_CONFIG:   {display_d3, display_d2, display_d1, display_d0} = {5'hC, 5'h0, CHAR_n, 5'hF};     // "COnF"
+                S_SHOW_FLAGS: {display_d3, display_d2, display_d1, display_d0} = {CHAR_F, CHAR_L, CHAR_A, CHAR_G}; // <-- NUEVO: "FLAG"
                 default:    {display_d3, display_d2, display_d1, display_d0} = {BLANK, BLANK, BLANK, BLANK}; 
             endcase
         end
@@ -306,15 +333,16 @@ module converter_7seg(
             5'h0C: seg = 7'b1000110; // C
             5'h0D: seg = 7'b0100001; // d (minúscula)
             5'h0E: seg = 7'b0000110; // E
-            5'h0F: seg = 7'b0001111; // F
+            5'h0F: seg = 7'b0001110; // F
 
             // Códigos 0x10 en adelante: Mapeo a LETRAS personalizadas
             5'h10: seg = 7'b0101011; // n (minúscula)
             5'h11: seg = 7'b0101111; // r (minúscula)
             5'h12: seg = 7'b1000111; // L (mayúscula)
-            5'h13: seg = 7'b0010011; // H (mayúscula)
+            5'h13: seg = 7'b0001001; // H (mayúscula)
             5'h14: seg = 7'b1111111; // Espacio en blanco (BLANK)
             5'h15: seg = 7'b1001111; // I (como 1 pero sin la parte de arriba)
+            //5'h16: seg = 7'b1000010; // <-- NUEVO: G (mayúscula)
             // ... puedes seguir añadiendo hasta 5'h1F ...
             
             default: seg = 7'b1111111; // Apagado
